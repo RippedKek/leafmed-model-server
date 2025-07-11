@@ -1,9 +1,8 @@
 from huggingface_hub import hf_hub_download
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import tensorflow as tf
-import numpy as np
 from PIL import Image
+import numpy as np
 import base64
 import io
 import os
@@ -15,53 +14,14 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# Load Keras Model
-keras_path = hf_hub_download(repo_id="RippedKek/leafmed-models", filename="model.keras")
-model = tf.keras.models.load_model(keras_path)
-
-# Load Labels
-labels_path = hf_hub_download(repo_id="RippedKek/leafmed-models", filename="labels.txt")
-with open(labels_path, 'r') as f:
-    labels = [line.strip() for line in f.readlines()]
-
-# Load YOLO Model
+# Load YOLO model from Hugging Face
 yolo_path = hf_hub_download(repo_id="RippedKek/leafmed-models", filename="yolo11x_leaf.pt")
 yolo_model = YOLO(yolo_path)
-
-def preprocess_image(image_bytes):
-    img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-    img = img.resize((224, 224))
-    img_array = np.array(img) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
-    return img_array.astype(np.float32)
 
 def image_to_base64(image: Image.Image) -> str:
     buffered = io.BytesIO()
     image.save(buffered, format="JPEG")
     return base64.b64encode(buffered.getvalue()).decode()
-
-@app.route('/v1/predict', methods=['POST'])
-def predict():
-    data = request.get_json()
-    if not data or 'image' not in data:
-        return jsonify({'error': 'No image provided'}), 400
-
-    try:
-        image_bytes = base64.b64decode(data['image'])
-    except Exception as e:
-        return jsonify({'error': f'Base64 decode error: {str(e)}'}), 400
-
-    img_tensor = preprocess_image(image_bytes)
-    predictions = model.predict(img_tensor)[0]
-    top_index = int(np.argmax(predictions))
-    top_label = labels[top_index]
-    confidence = float(predictions[top_index])
-
-    return jsonify({
-        'index': top_index,
-        'label': top_label,
-        'confidence': round(confidence, 4)
-    })
 
 @app.route('/v2/detect', methods=['POST'])
 def predict_with_crop():
