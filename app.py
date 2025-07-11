@@ -1,9 +1,7 @@
 from huggingface_hub import hf_hub_download
 from flask import Flask, request, jsonify
-from transformers import AutoImageProcessor, AutoModelForImageClassification, ViTForImageClassification
 from flask_cors import CORS
 import tensorflow as tf
-import torch
 import numpy as np
 from PIL import Image
 import base64
@@ -21,25 +19,14 @@ CORS(app)
 keras_path = hf_hub_download(repo_id="RippedKek/leafmed-models", filename="model.keras")
 model = tf.keras.models.load_model(keras_path)
 
-#model = tf.keras.models.load_model('model/model.keras')
-
 # Load Labels
 labels_path = hf_hub_download(repo_id="RippedKek/leafmed-models", filename="labels.txt")
 with open(labels_path, 'r') as f:
     labels = [line.strip() for line in f.readlines()]
-#with open('labels.txt', 'r') as f:
-#    labels = [line.strip() for line in f.readlines()]
 
 # Load YOLO Model
 yolo_path = hf_hub_download(repo_id="RippedKek/leafmed-models", filename="yolo11x_leaf.pt")
 yolo_model = YOLO(yolo_path)
-#yolo_model = YOLO("model/yolo11x_leaf.pt") 
-
-# Load Hugging Face Transformer Model
-processor = AutoImageProcessor.from_pretrained("RippedKek/leafmed-models-v2")
-hf_model = AutoModelForImageClassification.from_pretrained("RippedKek/leafmed-models-v2")
-#processor = AutoImageProcessor.from_pretrained("model/model-v2")
-#model = AutoModelForImageClassification.from_pretrained("model/model-v2")
 
 def preprocess_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
@@ -75,7 +62,6 @@ def predict():
         'label': top_label,
         'confidence': round(confidence, 4)
     })
-
 
 @app.route('/v2/detect', methods=['POST'])
 def predict_with_crop():
@@ -114,30 +100,6 @@ def predict_with_crop():
         "leaf_detected": False,
         "message": "No leaf detected in the image."
     })
-
-@app.route('/v2/predict', methods=['POST'])
-def predict_v2():
-    data = request.get_json()
-    if not data or 'image' not in data:
-        return jsonify({'error': 'No image provided'}), 400
-
-    try:
-        image_bytes = base64.b64decode(data['image'])
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    except Exception as e:
-        return jsonify({'error': f'Image decode error: {str(e)}'}), 400
-
-    inputs = processor(image, return_tensors="pt")
-
-    with torch.no_grad():
-        logits = hf_model(**inputs).logits
-        predicted_label = logits.argmax(-1).item()
-        label = hf_model.config.id2label[predicted_label]
-
-    return jsonify({
-        "label": label
-    })
-    
 
 if __name__ == "__main__":
     host = os.getenv('HOST', '0.0.0.0')
